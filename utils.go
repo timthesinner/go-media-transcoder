@@ -69,3 +69,18 @@ func FilterEnglishStreams(streams []interface{}) []string {
 
 	return english
 }
+
+func HasAttachmentStreams(streams []interface{}) bool {
+	for _, _stream := range streams {
+		stream, ok := _stream.(map[string]interface{})
+		if !ok {
+			return false
+		}
+
+		if stream["codec_type"] == "attachment" {
+			return true
+		}
+	}
+
+	return false
+}

@@ -50,8 +50,13 @@ func handle(err error) {
 	}
 }
 
+func movieAsMkv(movie string) string {
+	baseName := filepath.Base(movie)
+	return strings.TrimSuffix(baseName, filepath.Ext(baseName)) + ".mkv"
+}
+
 func transcodedMovie(originalMovie string) string {
-	return filepath.Join(filepath.Dir(originalMovie), "transcode-"+filepath.Base(originalMovie))
+	return filepath.Join(filepath.Dir(originalMovie), "transcode-"+movieAsMkv(originalMovie))
 }
 
 func transcode(originalMovie string, hwaccel string, threads int, crf int, codec string) *Transcode {
@@ -80,6 +85,7 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 		fmt.Println("Did not detect any english streams")
 		return nil
 	}
+
 	targetMovie := transcodedMovie(originalMovie)
 	transcodeArgs := []string{
 		"-nostdin",
@@ -90,22 +96,24 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 		transcodeArgs = append(transcodeArgs, "-hwaccel", hwaccel)
 	}
 
-	transcodeArgs = append(append(append(transcodeArgs,
+	transcodeArgs = append(transcodeArgs,
 		"-analyzeduration", "250M", "-probesize", "250M",
 		"-i", originalMovie,
 		"-map_metadata:g", "0:g",
-		"-map_metadata:s:v", "0:s:v",
-		//"-map_metadata:s:t?", "0:s:t", <-- This does not map metadata
-		"-map", "v:0",
-	), english...), []string{
+		"-map_metadata:s:v", "0:s:v")
+
+	if HasAttachmentStreams(streams) {
+		transcodeArgs = append(transcodeArgs, "-map_metadata:s:t", "0:s:t")
+	}
+
+	transcodeArgs = append(append(append(transcodeArgs, "-map", "v:0"), english...),
 		"-map", "d?",
 		"-map", "t?",
 		"-c:v", codec, "-vf", scale, "-crf", strconv.Itoa(crf), "-preset", *speed, "-tune", "fastdecode", "-movflags", "+faststart",
 		"-c:a", "libopus", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'",
 		"-c:s", "copy",
 		"-metadata:s:a", "language=eng",
-		"-metadata:s:s", "language=eng",
-	}...)
+		"-metadata:s:s", "language=eng")
 
 	if threads > 0 {
 		transcodeArgs = append(transcodeArgs, "-threads", strconv.Itoa(threads))
@@ -132,14 +140,15 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	runCommand("mv", originalMovie, rawMovie)
 
 	// Move the transcoded movie over the original
+	originalMovie = filepath.Join(filepath.Dir(originalMovie), movieAsMkv(originalMovie))
 	runCommand("mv", targetMovie, originalMovie)
 	info, err := os.Stat(originalMovie)
 	handle(err)
 
 	transcodedStream := movieMetadata(originalMovie)["streams"].([]interface{})[0].(map[string]interface{})
 	return &Transcode{
-		OriginalMovie:   rawMovie,
-		TranscodedMovie: originalMovie,
+		OriginalMovie:   filepath.Base(rawMovie),
+		TranscodedMovie: filepath.Base(originalMovie),
 		OriginalCodec:   videoStream["codec_name"].(string),
 		OriginalWidth:   int(videoStream["width"].(float64)),
 		TranscodedCodec: transcodedStream["codec_name"].(string),
