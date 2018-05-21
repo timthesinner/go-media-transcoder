@@ -117,8 +117,8 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 		transcodeArgs = append(transcodeArgs, "-map_metadata:s:t", "0:s:t")
 	}
 
-	transcodeArgs = append(append(append(transcodeArgs, "-map", "v:0"), english...),
-		"-map", "t?",
+	transcodeArgs = append(append(append(transcodeArgs, "-map", "0:v:0"), english...),
+		"-map", "0:t?",
 		"-c:v", codec)
 
 	if scale != "" {

@@ -4,7 +4,6 @@ package main
 import (
 	"regexp"
 	"strconv"
-	"strings"
 )
 
 /**
@@ -36,15 +35,6 @@ func groupsFromRegex(r *regexp.Regexp, search string) (paramsMap map[string]stri
 		}
 	}
 	return
-}
-
-var md5Regex = regexp.MustCompile(`(?mi):\s*(?P<md5>([a-f0-9]{2} )*[a-f0-9]{2})\s*CertUtil:`)
-
-//var md5Regex = regexp.MustCompile(`.* = (?P<md5>[a-z0-9]+)`)
-
-func md5FromFile(file string) string {
-	return strings.Replace(groupsFromRegex(md5Regex, runCommandOutput("CertUtil", "-hashfile", file, "MD5"))["md5"], " ", "", -1)
-	//return groupsFromRegex(md5Regex, runCommandOutput("md5", file))["md5"]
 }
 
 func FilterEnglishStreams(streams []interface{}) []string {
