@@ -1,3 +1,5 @@
+// +build darwin dragonfly freebsd linux nacl netbsd openbsd solaris
+
 //By TimTheSinner
 package main
 
