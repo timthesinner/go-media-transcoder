@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 /**
@@ -31,17 +32,20 @@ import (
  */
 
 type Transcode struct {
-	Movie           string `json:"movie"`
-	OriginalMovie   string `json:"originalFile"`
-	OriginalCodec   string `json:"originalCodec"`
-	OriginalWidth   int    `json:"originalWidth"`
+	Movie         string `json:"movie"`
+	OriginalMovie string `json:"originalFile"`
+	OriginalCodec string `json:"originalCodec"`
+	OriginalWidth int    `json:"originalWidth"`
+
 	TranscodedMovie string `json:"transcodedFile"`
 	TranscodedCodec string `json:"transcodedCodec"`
 	TranscodedWidth int    `json:"transcodedWidth"`
-	TranscodedHash  string `json:"transcodedHash"`
 	TranscodedSize  int64  `json:"transcodedSize"`
 	TranscodedSpeed string `json:"transcodedSpeed"`
 	TranscodeCRF    int    `json:"transcodedCRF"`
+
+	TranscodedBitrate  string `json:"transcodedBitrate"`
+	TranscodedDuration string `json:"transcodedDuration"`
 }
 
 func handle(err error) {
@@ -76,8 +80,8 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 		return nil
 	}
 
-	if int(width) < 1920 {
-		scale = "scale=" + strconv.Itoa(int(width)) + ":-1"
+	if int(width) <= 1920 {
+		scale = ""
 	}
 
 	english := FilterEnglishStreams(streams)
@@ -107,13 +111,22 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	}
 
 	transcodeArgs = append(append(append(transcodeArgs, "-map", "v:0"), english...),
-		"-map", "d?",
 		"-map", "t?",
-		"-c:v", codec, "-vf", scale, "-crf", strconv.Itoa(crf), "-preset", *speed, "-tune", "fastdecode", "-movflags", "+faststart",
+		"-c:v", codec)
+
+	if scale != "" {
+		transcodeArgs = append(transcodeArgs, "-vf", scale)
+	}
+
+	transcodeArgs = append(transcodeArgs,
+		"-crf", strconv.Itoa(crf), "-preset", *speed, "-tune", "fastdecode", "-movflags", "+faststart",
 		"-c:a", "libopus", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'",
 		"-c:s", "copy",
 		"-metadata:s:a", "language=eng",
-		"-metadata:s:s", "language=eng")
+		"-metadata:s:s", "language=eng",
+		"-metadata:s:v", "language=eng",
+		"-metadata:s:v", "title="+filepath.Base(filepath.Dir(originalMovie)),
+		"-metadata:s:v", "description=Encoded by https://github.com/timthesinner/go-media-transcoder")
 
 	if threads > 0 {
 		transcodeArgs = append(transcodeArgs, "-threads", strconv.Itoa(threads))
@@ -145,7 +158,10 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	info, err := os.Stat(originalMovie)
 	handle(err)
 
-	transcodedStream := movieMetadata(originalMovie)["streams"].([]interface{})[0].(map[string]interface{})
+	transcodedMetadata := movieMetadata(originalMovie)
+	transcodedFormat := transcodedMetadata["format"].(map[string]interface{})
+	duration, _ := time.ParseDuration(transcodedFormat["duration"].(string) + "s")
+	transcodedStream := transcodedMetadata["streams"].([]interface{})[0].(map[string]interface{})
 	return &Transcode{
 		OriginalMovie:   filepath.Base(rawMovie),
 		TranscodedMovie: filepath.Base(originalMovie),
@@ -153,10 +169,12 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 		OriginalWidth:   int(videoStream["width"].(float64)),
 		TranscodedCodec: transcodedStream["codec_name"].(string),
 		TranscodedWidth: int(transcodedStream["width"].(float64)),
-		TranscodedHash:  md5FromFile(originalMovie),
-		TranscodedSize:  info.Size(),
-		TranscodedSpeed: *speed,
-		TranscodeCRF:    crf,
+		//TranscodedHash:  md5FromFile(originalMovie),
+		TranscodedSize:     info.Size(),
+		TranscodedSpeed:    *speed,
+		TranscodeCRF:       crf,
+		TranscodedDuration: duration.String(),
+		TranscodedBitrate:  transcodedFormat["bit_rate"].(string),
 	}
 }
 
@@ -239,7 +257,7 @@ func main() {
 		for _, file := range files {
 			if !file.IsDir() {
 				movie := filepath.Join(movieDir, file.Name())
-				fmt.Println(file.Name())
+
 				if process, ok := PROCESS_FILE_EXTENSIONS[filepath.Ext(file.Name())]; !ok {
 					fmt.Printf("UNKNOWN FILE TYPE %s\n", filepath.Ext(file.Name()))
 				} else if strings.HasPrefix(file.Name(), "transcode-") {
