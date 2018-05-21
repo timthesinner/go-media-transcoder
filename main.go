@@ -66,7 +66,6 @@ func transcodedMovie(originalMovie string) string {
 func transcode(originalMovie string, hwaccel string, threads int, crf int, codec string) *Transcode {
 	lock, err := NewLockfile(filepath.Join(filepath.Dir(originalMovie), "transcoding.lck"))
 	if err != nil {
-		fmt.Printf("Cannot init lock. reason: %v", err)
 		return nil
 	}
 	defer lock.Unlock()
@@ -86,8 +85,15 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 
 	english := FilterEnglishStreams(streams)
 	if len(english) == 0 {
-		fmt.Println("Did not detect any english streams")
-		return nil
+		if _, err := os.Stat(filepath.Join(filepath.Dir(originalMovie), "verified-english")); err == nil {
+			english = []string{"-map", "0:a"}
+		} else {
+			fmt.Println("Did not detect any english streams")
+			for i := 1; i <= 10; i++ {
+				fmt.Println("Please Verify English: " + filepath.Dir(originalMovie))
+			}
+			return nil
+		}
 	}
 
 	targetMovie := transcodedMovie(originalMovie)
