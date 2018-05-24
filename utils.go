@@ -74,3 +74,16 @@ func HasAttachmentStreams(streams []interface{}) bool {
 
 	return false
 }
+
+func findVideoStream(streams []interface{}) map[string]interface{} {
+	for _, stream := range streams {
+		if video, ok := stream.(map[string]interface{}); !ok {
+			return nil
+		} else if codec, ok := video["codec_type"]; !ok {
+			continue
+		} else if codec == "video" {
+			return video
+		}
+	}
+	return nil
+}

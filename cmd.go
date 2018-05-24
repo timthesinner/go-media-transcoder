@@ -48,7 +48,7 @@ func runCommandOutput(command string, args ...string) string {
 
 	cmd.Stderr = os.Stderr
 
-	fmt.Println("Running "+command+" with:", args)
+	//fmt.Println("Running "+command+" with:", args)
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Error executing "+command, err)

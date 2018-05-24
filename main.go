@@ -32,10 +32,11 @@ import (
  */
 
 type Transcode struct {
-	Movie         string `json:"movie"`
-	OriginalMovie string `json:"originalFile"`
-	OriginalCodec string `json:"originalCodec"`
-	OriginalWidth int    `json:"originalWidth"`
+	Movie             string `json:"movie"`
+	OriginalMovie     string `json:"originalFile"`
+	OriginalCodec     string `json:"originalCodec"`
+	OriginalWidth     int    `json:"originalWidth"`
+	OriginalPixFormat string `json:"originalPixFormat"`
 
 	TranscodedMovie string `json:"transcodedFile"`
 	TranscodedCodec string `json:"transcodedCodec"`
@@ -71,7 +72,10 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	defer lock.Unlock()
 
 	streams := movieMetadata(originalMovie)["streams"].([]interface{})
-	videoStream := streams[0].(map[string]interface{})
+	videoStream := findVideoStream(streams)
+	if videoStream == nil {
+		return nil
+	}
 
 	scale := "scale=1920:-1"
 	width, ok := videoStream["coded_width"].(float64)
@@ -126,7 +130,7 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	}
 
 	transcodeArgs = append(transcodeArgs,
-		"-crf", strconv.Itoa(crf), "-preset", *speed, "-tune", "fastdecode", "-movflags", "+faststart",
+		"-crf", strconv.Itoa(crf), "-preset", *speed, "-pix_fmt", *pixFmt, "-tune", "fastdecode", "-movflags", "+faststart",
 		"-c:a", "libopus", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'",
 		"-c:s", "copy",
 		"-metadata:s:a", "language=eng",
@@ -170,10 +174,12 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	duration, _ := time.ParseDuration(transcodedFormat["duration"].(string) + "s")
 	transcodedStream := transcodedMetadata["streams"].([]interface{})[0].(map[string]interface{})
 	return &Transcode{
-		OriginalMovie:   filepath.Base(rawMovie),
+		OriginalMovie:     filepath.Base(rawMovie),
+		OriginalCodec:     videoStream["codec_name"].(string),
+		OriginalWidth:     int(videoStream["width"].(float64)),
+		OriginalPixFormat: videoStream["pix_fmt"].(string),
+
 		TranscodedMovie: filepath.Base(originalMovie),
-		OriginalCodec:   videoStream["codec_name"].(string),
-		OriginalWidth:   int(videoStream["width"].(float64)),
 		TranscodedCodec: transcodedStream["codec_name"].(string),
 		TranscodedWidth: int(transcodedStream["width"].(float64)),
 		//TranscodedHash:  md5FromFile(originalMovie),
@@ -215,12 +221,16 @@ func writeMetadata(mediaDir string, meta *Transcode) map[string]*Transcode {
 }
 
 var PROCESS_FILE_EXTENSIONS = map[string]bool{
-	".mkv": true,
-	".mp4": true,
+	".ts":   true,
+	".mkv":  true,
+	".mp4":  true,
+	".m2ts": true,
 
 	// Do not process originals
-	".mkv-orig": false,
-	".mp4-orig": false,
+	".ts-orig":   true,
+	".mkv-orig":  false,
+	".mp4-orig":  false,
+	".m2ts-orig": false,
 
 	// Do not process lock files
 	".lck": false,
@@ -230,6 +240,7 @@ var PROCESS_FILE_EXTENSIONS = map[string]bool{
 	".jpg":      false,
 	".DS_Store": false,
 	".nfo-orig": false,
+	"":          false,
 }
 
 const MIN_FILE_SIZE = 256 * 1024 * 1024
@@ -239,6 +250,7 @@ var threads = flag.Int("threads", 0, "Number of threads")
 var crf = flag.Int("crf", 22, "CRF (Quality Factor)")
 var codec = flag.String("codec", "libx265", "Video encoding codec")
 var speed = flag.String("speed", "slower", "Encoder speed")
+var pixFmt = flag.String("pix_fmt", "yuv420p", "Video color depth, dont go deeper than yuv420p if your encoding for a pi")
 
 func main() {
 	flag.Parse()
@@ -266,7 +278,7 @@ func main() {
 				movie := filepath.Join(movieDir, file.Name())
 
 				if process, ok := PROCESS_FILE_EXTENSIONS[filepath.Ext(file.Name())]; !ok {
-					fmt.Printf("UNKNOWN FILE TYPE %s\n", filepath.Ext(file.Name()))
+					fmt.Printf("UNKNOWN FILE TYPE %s in %s\n", filepath.Ext(file.Name()), movieName.Name())
 				} else if strings.HasPrefix(file.Name(), "transcode-") {
 					continue
 				} else if process && file.Size() > MIN_FILE_SIZE {
