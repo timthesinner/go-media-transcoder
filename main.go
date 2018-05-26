@@ -77,7 +77,7 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 		return nil
 	}
 
-	scale := "scale=1920:-1"
+	scale := "scale=1920:-2"
 	width, ok := videoStream["coded_width"].(float64)
 	if !ok {
 		return nil
@@ -227,7 +227,7 @@ var PROCESS_FILE_EXTENSIONS = map[string]bool{
 	".m2ts": true,
 
 	// Do not process originals
-	".ts-orig":   true,
+	".ts-orig":   false,
 	".mkv-orig":  false,
 	".mp4-orig":  false,
 	".m2ts-orig": false,
