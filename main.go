@@ -222,12 +222,14 @@ func writeMetadata(mediaDir string, meta *Transcode) map[string]*Transcode {
 
 var PROCESS_FILE_EXTENSIONS = map[string]bool{
 	".ts":   true,
+	".avi":  true,
 	".mkv":  true,
 	".mp4":  true,
 	".m2ts": true,
 
 	// Do not process originals
 	".ts-orig":   false,
+	".avi-orig":  false,
 	".mkv-orig":  false,
 	".mp4-orig":  false,
 	".m2ts-orig": false,
