@@ -111,7 +111,7 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	}
 
 	transcodeArgs = append(transcodeArgs,
-		"-analyzeduration", "250M", "-probesize", "250M",
+		"-analyzeduration", "250M", "-probesize", "250M", "-fix_sub_duration",
 		"-i", originalMovie,
 		"-max_muxing_queue_size", "4096",
 		"-map_metadata:g", "0:g",
