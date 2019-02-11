@@ -104,6 +104,8 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	transcodeArgs := []string{
 		"-nostdin",
 		"-hide_banner",
+		"-avioflags", "direct",
+		"-rtbufsize", "64M",
 	}
 
 	if strings.TrimSpace(hwaccel) != "" {
@@ -111,9 +113,9 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	}
 
 	transcodeArgs = append(transcodeArgs,
-		"-analyzeduration", "250M", "-probesize", "250M", "-fix_sub_duration",
+		"-analyzeduration", "512M", "-probesize", "512M", "-fix_sub_duration",
 		"-i", originalMovie,
-		"-max_muxing_queue_size", "4096",
+		"-max_muxing_queue_size", "65536",
 		"-map_metadata:g", "0:g",
 		"-map_metadata:s:v", "0:s:v")
 

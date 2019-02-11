@@ -4,6 +4,7 @@ package main
 import (
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 /**
@@ -51,7 +52,9 @@ func FilterEnglishStreams(streams []interface{}) []string {
 				continue
 			}
 
-			if language, ok := tags["language"]; ok && language == "eng" {
+			if language, ok := tags["language"]; ok && strings.ToLower(language.(string)) == "eng" {
+				english = append(english, "-map", "0:"+strconv.Itoa(int(stream["index"].(float64))))
+			} else if title, ok := tags["title"]; ok && strings.HasPrefix(strings.ToLower(title.(string)), "english") {
 				english = append(english, "-map", "0:"+strconv.Itoa(int(stream["index"].(float64))))
 			}
 		}
