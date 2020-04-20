@@ -134,7 +134,7 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	transcodeArgs = append(transcodeArgs,
 		"-crf", strconv.Itoa(crf), "-preset", *speed, "-pix_fmt", *pixFmt, "-tune", "fastdecode", "-movflags", "+faststart",
 		"-c:a", "libopus", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'",
-		"-c:s", "copy",
+		"-c:s", "ass",
 		"-metadata:s:a", "language=eng",
 		"-metadata:s:s", "language=eng",
 		"-metadata:s:v", "language=eng",
