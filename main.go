@@ -228,6 +228,8 @@ var PROCESS_FILE_EXTENSIONS = map[string]bool{
 	".mkv":  true,
 	".mp4":  true,
 	".m2ts": true,
+	".m4v":  true,
+	".wmv":  true,
 
 	// Do not process originals
 	".ts-orig":   false,
@@ -235,6 +237,8 @@ var PROCESS_FILE_EXTENSIONS = map[string]bool{
 	".mkv-orig":  false,
 	".mp4-orig":  false,
 	".m2ts-orig": false,
+	".m4v-orig":  false,
+	".wmv-orig":  false,
 
 	// Do not process lock files
 	".lck": false,
