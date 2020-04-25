@@ -133,8 +133,8 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 
 	transcodeArgs = append(transcodeArgs,
 		"-crf", strconv.Itoa(crf), "-preset", *speed, "-pix_fmt", *pixFmt, "-tune", "fastdecode", "-movflags", "+faststart",
-		"-c:a", "libopus", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'",
-		"-c:s", "ass",
+		"-c:a", "libopus", "-b:a", "512k", "-vbr", "on", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'", "-compression_level", "10", "-frame_duration", "60",
+		"-c:s", *subtitleCodec,
 		"-metadata:s:a", "language=eng",
 		"-metadata:s:s", "language=eng",
 		"-metadata:s:v", "language=eng",
@@ -255,6 +255,7 @@ var crf = flag.Int("crf", 22, "CRF (Quality Factor)")
 var codec = flag.String("codec", "libx265", "Video encoding codec")
 var speed = flag.String("speed", "slower", "Encoder speed")
 var pixFmt = flag.String("pix_fmt", "yuv420p", "Video color depth, dont go deeper than yuv420p if your encoding for a pi")
+var subtitleCodec = flag.String("subtitle-codec", "copy", "Codec to use when interacting with the subtitles stream")
 
 func main() {
 	flag.Parse()
