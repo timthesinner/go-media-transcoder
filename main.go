@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 /**
@@ -222,6 +224,44 @@ func writeMetadata(mediaDir string, meta *Transcode) map[string]*Transcode {
 	return mediaMetadata
 }
 
+func movieProcessor(mediaDir string) func(os.FileInfo) {
+	mediaMetadata := readMetadata(mediaDir)
+	processMovie := func(movieName os.FileInfo) {
+		if !movieName.IsDir() {
+			return
+		}
+
+		movieDir := filepath.Join(mediaDir, movieName.Name())
+		files, err := ioutil.ReadDir(movieDir)
+		handle(err)
+
+		for _, file := range files {
+			if !file.IsDir() {
+				movie := filepath.Join(movieDir, file.Name())
+
+				if process, ok := PROCESS_FILE_EXTENSIONS[filepath.Ext(file.Name())]; !ok {
+					fmt.Printf("UNKNOWN FILE TYPE %s in %s\n", filepath.Ext(file.Name()), movieName.Name())
+				} else if strings.HasPrefix(file.Name(), "transcode-") {
+					continue
+				} else if process && file.Size() > MIN_FILE_SIZE {
+					if meta, ok := mediaMetadata[movieName.Name()]; !ok || (meta.TranscodedSize != file.Size()) {
+						if ok {
+							runCommand("rm", "-f", meta.TranscodedMovie)
+						}
+
+						if meta = transcode(movie, *hwaccel, *threads, *crf, *codec); meta != nil {
+							meta.Movie = movieName.Name()
+							mediaMetadata = writeMetadata(mediaDir, meta)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return processMovie
+}
+
 var PROCESS_FILE_EXTENSIONS = map[string]bool{
 	".ts":   true,
 	".avi":  true,
@@ -255,9 +295,9 @@ const MIN_FILE_SIZE = 256 * 1024 * 1024
 
 var hwaccel = flag.String("hwaccel", "", "Hardware Acceleration Driver")
 var threads = flag.Int("threads", 0, "Number of threads")
-var crf = flag.Int("crf", 22, "CRF (Quality Factor)")
-var codec = flag.String("codec", "libx265", "Video encoding codec")
-var speed = flag.String("speed", "slower", "Encoder speed")
+var crf = flag.Int("crf", 20, "CRF (Quality Factor)")
+var codec = flag.String("codec", "hevc_amf", "Video encoding codec")
+var speed = flag.String("speed", "placebo", "Encoder speed")
 var pixFmt = flag.String("pix_fmt", "yuv420p", "Video color depth, dont go deeper than yuv420p if your encoding for a pi")
 var subtitleCodec = flag.String("subtitle-codec", "copy", "Codec to use when interacting with the subtitles stream")
 
@@ -269,40 +309,36 @@ func main() {
 		mediaDir = flag.Arg(0)
 	}
 
-	mediaMetadata := readMetadata(mediaDir)
+	processor := movieProcessor(mediaDir)
+
+	watcher, err := fsnotify.NewWatcher()
+	handle(err)
+	handle(watcher.Add(mediaDir))
+
 	movies, err := ioutil.ReadDir(mediaDir)
 	handle(err)
 
+	// Process all movies immediatley
 	for _, movieName := range movies {
-		if !movieName.IsDir() {
-			continue
-		}
+		processor(movieName)
+	}
 
-		movieDir := filepath.Join(mediaDir, movieName.Name())
-		files, err := ioutil.ReadDir(movieDir)
-		handle(err)
+	done := make(chan bool)
 
-		for _, file := range files {
-			if !file.IsDir() {
-				movie := filepath.Join(movieDir, file.Name())
+	go func() {
+		for {
+			select {
+			// watch for events
+			case event := <-watcher.Events:
+				fileStat, err := os.Stat(event.Name)
+				handle(err)
+				processor(fileStat)
 
-				if process, ok := PROCESS_FILE_EXTENSIONS[filepath.Ext(file.Name())]; !ok {
-					fmt.Printf("UNKNOWN FILE TYPE %s in %s\n", filepath.Ext(file.Name()), movieName.Name())
-				} else if strings.HasPrefix(file.Name(), "transcode-") {
-					continue
-				} else if process && file.Size() > MIN_FILE_SIZE {
-					if meta, ok := mediaMetadata[movieName.Name()]; !ok || (meta.TranscodedSize != file.Size()) {
-						if ok {
-							runCommand("rm", "-f", meta.TranscodedMovie)
-						}
-
-						if meta = transcode(movie, *hwaccel, *threads, *crf, *codec); meta != nil {
-							meta.Movie = movieName.Name()
-							mediaMetadata = writeMetadata(mediaDir, meta)
-						}
-					}
-				}
+			case err := <-watcher.Errors:
+				handle(err)
 			}
 		}
-	}
+	}()
+
+	<-done
 }
