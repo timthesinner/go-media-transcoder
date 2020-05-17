@@ -330,9 +330,22 @@ func main() {
 			select {
 			// watch for events
 			case event := <-watcher.Events:
-				fileStat, err := os.Stat(event.Name)
-				handle(err)
-				processor(fileStat)
+				switch event.Op {
+				case fsnotify.Remove:
+					break
+				case fsnotify.Rename:
+					break
+				default:
+					fmt.Println("Processing", event.Name, event.Op)
+
+					fileStat, err := os.Stat(event.Name)
+					handle(err)
+
+					// Give the file system a moment to quiesce
+					time.Sleep(10 * time.Second)
+
+					processor(fileStat)
+				}
 
 			case err := <-watcher.Errors:
 				handle(err)
