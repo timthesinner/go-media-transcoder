@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
@@ -311,9 +312,12 @@ func main() {
 
 	processor := movieProcessor(mediaDir)
 
-	watcher, err := fsnotify.NewWatcher()
+	rootWatcher, err := fsnotify.NewWatcher()
 	handle(err)
-	handle(watcher.Add(mediaDir))
+	handle(rootWatcher.Add(mediaDir))
+
+	movieWatcher, err := fsnotify.NewWatcher()
+	handle(err)
 
 	movies, err := ioutil.ReadDir(mediaDir)
 	handle(err)
@@ -321,6 +325,10 @@ func main() {
 	// Process all movies immediatley
 	for _, movieName := range movies {
 		processor(movieName)
+
+		if movieName.IsDir() {
+			movieWatcher.Add(filepath.Join(mediaDir, movieName.Name()))
+		}
 	}
 
 	done := make(chan bool)
@@ -328,8 +336,25 @@ func main() {
 	go func() {
 		for {
 			select {
-			// watch for events
-			case event := <-watcher.Events:
+			case event := <-movieWatcher.Events:
+				switch event.Op {
+				case fsnotify.Remove:
+					break
+				case fsnotify.Rename:
+					break
+				default:
+					fmt.Println("Processing", event.Name, event.Op)
+
+					fileStat, err := os.Stat(path.Base(event.Name))
+					handle(err)
+
+					// Give the file system a moment to quiesce
+					time.Sleep(time.Duration(10+rand.Intn(20)) * time.Second)
+
+					processor(fileStat)
+				}
+
+			case event := <-rootWatcher.Events:
 				switch event.Op {
 				case fsnotify.Remove:
 					break
@@ -341,13 +366,17 @@ func main() {
 					fileStat, err := os.Stat(event.Name)
 					handle(err)
 
+					if fileStat.IsDir() && event.Op == fsnotify.Create {
+						movieWatcher.Add(event.Name)
+					}
+
 					// Give the file system a moment to quiesce
-					time.Sleep(10 * time.Second)
+					time.Sleep(time.Duration(10+rand.Intn(20)) * time.Second)
 
 					processor(fileStat)
 				}
 
-			case err := <-watcher.Errors:
+			case err := <-rootWatcher.Errors:
 				handle(err)
 			}
 		}
