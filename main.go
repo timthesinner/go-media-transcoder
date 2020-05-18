@@ -93,7 +93,7 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 	english := FilterEnglishStreams(streams)
 	if len(english) == 0 {
 		if _, err := os.Stat(filepath.Join(filepath.Dir(originalMovie), "verified-english")); err == nil {
-			english = []string{"-map", "0:a"}
+			english = []string{"-map", "0:a:0", "-map", "0:a:1?"}
 		} else {
 			fmt.Println("Did not detect any english streams")
 			for i := 1; i <= 10; i++ {
@@ -217,7 +217,7 @@ func writeMetadata(mediaDir string, meta *Transcode) map[string]*Transcode {
 	mediaMetadata := readMetadata(mediaDir)
 	mediaMetadata[meta.Movie] = meta
 
-	mediaMeta, err := os.OpenFile(path.Join(mediaDir, "transcode-metadata.json"), os.O_WRONLY|os.O_CREATE, 0644)
+	mediaMeta, err := os.OpenFile(path.Join(mediaDir, "transcode-metadata.json"), os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	handle(err)
 	defer mediaMeta.Close()
 
