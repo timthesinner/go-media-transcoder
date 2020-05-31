@@ -136,7 +136,7 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 
 	transcodeArgs = append(transcodeArgs,
 		"-crf", strconv.Itoa(crf), "-preset", *speed, "-pix_fmt", *pixFmt, "-tune", "fastdecode", "-movflags", "+faststart",
-		"-c:a", "libopus", "-b:a", "512k", "-vbr", "on", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'", "-compression_level", "10", "-frame_duration", "60",
+		"-c:a", "libopus", "-b:a", "256k", "-vbr", "on", "-af", "aformat=channel_layouts='7.1|6.1|5.1|stereo'", "-compression_level", "10", "-frame_duration", "10",
 		"-c:s", *subtitleCodec,
 		"-metadata:s:a", "language=eng",
 		"-metadata:s:s", "language=eng",
@@ -166,11 +166,11 @@ func transcode(originalMovie string, hwaccel string, threads int, crf int, codec
 
 	// Until we are comfortable with the settings always Preserve
 	rawMovie := originalMovie + "-orig"
-	runCommand("mv", originalMovie, rawMovie)
+	handle(os.Rename(originalMovie, rawMovie))
 
 	// Move the transcoded movie over the original
 	originalMovie = filepath.Join(filepath.Dir(originalMovie), movieAsMkv(originalMovie))
-	runCommand("mv", targetMovie, originalMovie)
+	handle(os.Rename(targetMovie, originalMovie))
 	info, err := os.Stat(originalMovie)
 	handle(err)
 
@@ -231,6 +231,8 @@ func movieProcessor(mediaDir string) func(os.FileInfo) {
 		if !movieName.IsDir() {
 			return
 		}
+
+		fmt.Println("Processing:", movieName.Name())
 
 		movieDir := filepath.Join(mediaDir, movieName.Name())
 		files, err := ioutil.ReadDir(movieDir)
@@ -302,6 +304,62 @@ var speed = flag.String("speed", "placebo", "Encoder speed")
 var pixFmt = flag.String("pix_fmt", "yuv420p", "Video color depth, dont go deeper than yuv420p if your encoding for a pi")
 var subtitleCodec = flag.String("subtitle-codec", "copy", "Codec to use when interacting with the subtitles stream")
 
+func watch(processingQueue chan<- os.FileInfo, movieWatcher, rootWatcher *fsnotify.Watcher) {
+	for {
+		select {
+		case event := <-movieWatcher.Events:
+			switch event.Op {
+			case fsnotify.Remove:
+				break
+			case fsnotify.Rename:
+				break
+			default:
+				// Skip locks and active transcode operations
+				if strings.Contains(event.Name, "transcoding.lck") || strings.Contains(event.Name, "transcode-") {
+					break
+				}
+
+				fileStat, err := os.Stat(filepath.Dir(event.Name))
+				if err != nil || !fileStat.IsDir() {
+					fmt.Println("Skipping", event.Name, event.Op, err, fileStat)
+					break
+				}
+				fmt.Println("Movie file watcher updated", event.Name, event.Op, fileStat.Name())
+
+				// Give the file system a moment to quiesce
+				time.Sleep(time.Duration(10+rand.Intn(20)) * time.Second)
+				processingQueue <- fileStat
+			}
+
+		case event := <-rootWatcher.Events:
+			switch event.Op {
+			case fsnotify.Remove:
+				break
+			case fsnotify.Rename:
+				break
+			default:
+				fileStat, err := os.Stat(event.Name)
+				if err != nil || !fileStat.IsDir() {
+					break
+				}
+
+				fmt.Println("Root file watcher update", event.Name, event.Op)
+
+				if event.Op == fsnotify.Create {
+					movieWatcher.Add(event.Name)
+				}
+
+				// Give the file system a moment to quiesce
+				time.Sleep(time.Duration(10+rand.Intn(20)) * time.Second)
+				processingQueue <- fileStat
+			}
+
+		case err := <-rootWatcher.Errors:
+			fmt.Println("Encountered error in root file watcher", err)
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -322,65 +380,29 @@ func main() {
 	movies, err := ioutil.ReadDir(mediaDir)
 	handle(err)
 
+	processingQueue := make(chan os.FileInfo, 2048)
+
 	// Process all movies immediatley
-	for _, movieName := range movies {
-		processor(movieName)
-
-		if movieName.IsDir() {
-			movieWatcher.Add(filepath.Join(mediaDir, movieName.Name()))
-		}
-	}
-
-	done := make(chan bool)
-
 	go func() {
-		for {
-			select {
-			case event := <-movieWatcher.Events:
-				switch event.Op {
-				case fsnotify.Remove:
-					break
-				case fsnotify.Rename:
-					break
-				default:
-					fmt.Println("Processing", event.Name, event.Op)
+		for _, movieName := range movies {
+			processingQueue <- movieName
 
-					fileStat, err := os.Stat(path.Base(event.Name))
-					handle(err)
-
-					// Give the file system a moment to quiesce
-					time.Sleep(time.Duration(10+rand.Intn(20)) * time.Second)
-
-					processor(fileStat)
-				}
-
-			case event := <-rootWatcher.Events:
-				switch event.Op {
-				case fsnotify.Remove:
-					break
-				case fsnotify.Rename:
-					break
-				default:
-					fmt.Println("Processing", event.Name, event.Op)
-
-					fileStat, err := os.Stat(event.Name)
-					handle(err)
-
-					if fileStat.IsDir() && event.Op == fsnotify.Create {
-						movieWatcher.Add(event.Name)
-					}
-
-					// Give the file system a moment to quiesce
-					time.Sleep(time.Duration(10+rand.Intn(20)) * time.Second)
-
-					processor(fileStat)
-				}
-
-			case err := <-rootWatcher.Errors:
-				handle(err)
+			if movieName.IsDir() {
+				handle(movieWatcher.Add(filepath.Join(mediaDir, movieName.Name())))
 			}
 		}
 	}()
 
+	// Start watching routines
+	go watch(processingQueue, movieWatcher, rootWatcher)
+
+	// Start processing routine
+	go func() {
+		for {
+			processor(<-processingQueue)
+		}
+	}()
+
+	done := make(chan bool)
 	<-done
 }
